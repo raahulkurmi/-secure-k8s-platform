@@ -1,0 +1,220 @@
+name: CI — Secure K8s Platform
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+# ── Job 1: Lint & Validate ──────────────────────────────────────────────────
+  lint-validate:
+    name: 🔍 Lint & Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Lint Backend Dockerfile (hadolint)
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: app/backend/Dockerfile
+          failure-threshold: error
+
+      - name: Lint Frontend Dockerfile (hadolint)
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: app/frontend/Dockerfile
+          failure-threshold: error
+
+      - name: Validate K8s Manifests (kubeval)
+        uses: stefanprodan/kube-tools@v1
+        with:
+          kubectl: 1.28.0
+          kubeval: 0.16.1
+          command: |
+            kubeval --strict k8s/base/*.yaml
+            kubeval --strict k8s/policies/*.yaml
+
+# ── Job 2: Security Scan ────────────────────────────────────────────────────
+  security-scan:
+    name: 🔐 Security Scan
+    runs-on: ubuntu-latest
+    needs: lint-validate
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Trivy — Scan filesystem (SAST)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: 1          # Fail pipeline on HIGH/CRITICAL
+          format: sarif
+          output: trivy-fs.sarif
+
+      - name: Upload Trivy SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()            # Upload even if scan fails
+        with:
+          sarif_file: trivy-fs.sarif
+
+      - name: Kyverno CLI — Validate policies against manifests
+        uses: kyverno/action-install-cli@v0.2.0
+        with:
+          release: v1.11.0
+
+      - name: Run Kyverno policy checks
+        run: |
+          kyverno apply k8s/policies/kyverno-policies.yaml \
+            --resource k8s/base/kubernetes_spec.yaml \
+            --detailed-results
+
+# ── Job 3: Build & Scan Images ──────────────────────────────────────────────
+  build-scan:
+    name: 🐳 Build & Scan Images
+    runs-on: ubuntu-latest
+    needs: security-scan
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+    outputs:
+      backend-image:  ${{ steps.meta-backend.outputs.tags }}
+      frontend-image: ${{ steps.meta-frontend.outputs.tags }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}  # Auto-provided by GitHub Actions
+
+      # ── Backend ────────────────────────────────────────────────────────────
+      - name: Extract backend image metadata
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}/secure-todo-backend
+          tags: |
+            type=sha,prefix=,suffix=,format=short
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: app/backend
+          push: false           # Don't push yet — scan first
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          load: true            # Load into local Docker for scanning
+
+      - name: Trivy — Scan backend image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_PREFIX }}/secure-todo-backend:latest
+          severity: HIGH,CRITICAL
+          exit-code: 1
+          format: sarif
+          output: trivy-backend.sarif
+
+      - name: Upload backend scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-backend.sarif
+
+      - name: Push backend image (main only)
+        if: github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v5
+        with:
+          context: app/backend
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          cache-from: type=gha
+
+      # ── Frontend ───────────────────────────────────────────────────────────
+      - name: Extract frontend image metadata
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}/secure-todo-frontend
+          tags: |
+            type=sha,prefix=,suffix=,format=short
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: app/frontend
+          push: false
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          load: true
+
+      - name: Trivy — Scan frontend image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_PREFIX }}/secure-todo-frontend:latest
+          severity: HIGH,CRITICAL
+          exit-code: 1
+          format: sarif
+          output: trivy-frontend.sarif
+
+      - name: Upload frontend scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-frontend.sarif
+
+      - name: Push frontend image (main only)
+        if: github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v5
+        with:
+          context: app/frontend
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          cache-from: type=gha
+
+# ── Job 4: Update Manifests ─────────────────────────────────────────────────
+  update-manifests:
+    name: 📝 Update Image Tags
+    runs-on: ubuntu-latest
+    needs: build-scan
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update image tags in manifests
+        run: |
+          SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          sed -i "s|secure-todo-backend:.*|${{ env.IMAGE_PREFIX }}/secure-todo-backend:${SHA}|g" \
+            k8s/base/kubernetes_spec.yaml
+          sed -i "s|secure-todo-frontend:.*|${{ env.IMAGE_PREFIX }}/secure-todo-frontend:${SHA}|g" \
+            k8s/base/kubernetes_spec.yaml
+
+      - name: Commit updated manifests
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add k8s/base/kubernetes_spec.yaml
+          git diff --staged --quiet || git commit -m "ci: update image tags to ${{ github.sha }}"
+          git push
