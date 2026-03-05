@@ -1,0 +1,11 @@
+# ConfigMap for DB init
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: app
+data:
+  init.sql: |
+    CREATE DATABASE tododb;
+    CREATE USER todouser WITH ENCRYPTED PASSWORD 'changeme';
+    GRANT ALL PRIVILEGES ON DATABASE tododb TO todouser;

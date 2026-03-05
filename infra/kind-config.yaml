@@ -1,0 +1,36 @@
+# infra/kind-config.yaml
+# Minimal working config for Apple Silicon (M1/M2/M3)
+# Security hardening applied AFTER cluster is running via Kyverno + Falco
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+
+name: secure-k8s
+
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 8888
+        protocol: TCP
+      - containerPort: 30443
+        hostPort: 8443
+        protocol: TCP
+      - containerPort: 30300
+        hostPort: 3001
+        protocol: TCP
+      - containerPort: 30900
+        hostPort: 9090
+        protocol: TCP
+
+  - role: worker
+    labels:
+      node-role: app
+
+  - role: worker
+    labels:
+      node-role: monitoring
+
+  - role: worker
+    labels:
+      node-role: security

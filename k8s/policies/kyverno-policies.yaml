@@ -1,0 +1,334 @@
+# k8s/policies/01-disallow-privileged.yaml
+# BLOCK: Any pod running as privileged (container escape risk)
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-privileged-containers
+  annotations:
+    policies.kyverno.io/title: Disallow Privileged Containers
+    policies.kyverno.io/category: Pod Security - Baseline
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Privileged containers share the host's kernel and can escape to the node.
+      This policy blocks any container or initContainer with privileged: true.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: no-privileged-containers
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      validate:
+        message: "Privileged containers are not allowed. Remove securityContext.privileged: true."
+        pattern:
+          spec:
+            =(initContainers):
+              - =(securityContext):
+                  =(privileged): "false"
+            containers:
+              - =(securityContext):
+                  =(privileged): "false"
+
+---
+# k8s/policies/02-require-non-root.yaml
+# BLOCK: Containers running as root user (UID 0)
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-run-as-non-root
+  annotations:
+    policies.kyverno.io/title: Require Non-Root User
+    policies.kyverno.io/category: Pod Security - Baseline
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Running containers as root gives attackers full container control.
+      Requires runAsNonRoot: true and runAsUser >= 1000.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: check-runAsNonRoot
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      validate:
+        message: "Containers must not run as root. Set securityContext.runAsNonRoot: true and runAsUser >= 1000."
+        pattern:
+          spec:
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: ">=1000"
+            containers:
+              - securityContext:
+                  runAsNonRoot: true
+                  runAsUser: ">=1000"
+
+---
+# k8s/policies/03-disallow-latest-tag.yaml
+# BLOCK: Images using the :latest tag (non-reproducible, unversioned)
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+  annotations:
+    policies.kyverno.io/title: Disallow Latest Image Tag
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      The :latest tag is mutable and makes deployments non-reproducible.
+      All images must be pinned to a specific digest or version tag.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-image-tag
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      validate:
+        message: "Image tag ':latest' is not allowed. Pin your image to a specific version or digest."
+        pattern:
+          spec:
+            containers:
+              - image: "!*:latest"
+
+---
+# k8s/policies/04-require-resource-limits.yaml
+# BLOCK: Pods without CPU and memory limits (prevents resource exhaustion / DoS)
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+  annotations:
+    policies.kyverno.io/title: Require Resource Limits
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Without resource limits a single pod can starve the node.
+      Requires every container to declare CPU and memory limits.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: check-container-resources
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces:
+                - app
+                - default
+      validate:
+        message: "All containers must define resources.limits.cpu and resources.limits.memory."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+
+---
+# k8s/policies/05-disallow-host-namespaces.yaml
+# BLOCK: hostPID, hostIPC, hostNetwork — these break container isolation
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-host-namespaces
+  annotations:
+    policies.kyverno.io/title: Disallow Host Namespaces
+    policies.kyverno.io/category: Pod Security - Baseline
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Sharing host namespaces allows containers to see host processes,
+      IPC, and network — enabling privilege escalation and lateral movement.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: host-namespaces
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      validate:
+        message: "Use of hostPID, hostIPC, and hostNetwork is forbidden."
+        pattern:
+          spec:
+            =(hostPID): "false"
+            =(hostIPC): "false"
+            =(hostNetwork): "false"
+
+---
+# k8s/policies/06-require-readonly-rootfs.yaml
+# BLOCK: Writable root filesystems (attackers can modify binaries at runtime)
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-readonly-rootfs
+  annotations:
+    policies.kyverno.io/title: Require Read-Only Root Filesystem
+    policies.kyverno.io/category: Pod Security - Restricted
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      A writable root filesystem lets attackers persist changes inside a container.
+      Enforce readOnlyRootFilesystem: true and use emptyDir for tmp writes.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: readonly-rootfs
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces:
+                - app
+      validate:
+        message: "Containers must set securityContext.readOnlyRootFilesystem: true."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  readOnlyRootFilesystem: true
+
+---
+# k8s/policies/07-disallow-host-path.yaml
+# BLOCK: hostPath volume mounts (can expose the entire host filesystem)
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-host-path
+  annotations:
+    policies.kyverno.io/title: Disallow hostPath Volumes
+    policies.kyverno.io/category: Pod Security - Baseline
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      hostPath mounts give containers access to arbitrary paths on the node,
+      enabling node escape and data exfiltration.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: no-hostpath
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      validate:
+        message: "hostPath volumes are not permitted. Use PersistentVolumeClaims instead."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.volumes[].hostPath | length(@) }}"
+                operator: GreaterThan
+                value: "0"
+
+---
+# k8s/policies/08-require-labels.yaml
+# AUDIT: All workloads must have standard labels for governance and observability
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-standard-labels
+  annotations:
+    policies.kyverno.io/title: Require Standard Labels
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: low
+    policies.kyverno.io/description: >-
+      Enforces Kubernetes recommended labels on all workloads for
+      consistent governance, cost attribution, and observability.
+spec:
+  validationFailureAction: Audit   # Audit-only so it shows in policy reports
+  background: true
+  rules:
+    - name: check-labels
+      match:
+        any:
+          - resources:
+              kinds: [Deployment, StatefulSet, DaemonSet]
+      validate:
+        message: "Workloads must have labels: app.kubernetes.io/name, app.kubernetes.io/version, app.kubernetes.io/component."
+        pattern:
+          metadata:
+            labels:
+              app.kubernetes.io/name: "?*"
+              app.kubernetes.io/version: "?*"
+              app.kubernetes.io/component: "?*"
+
+---
+# k8s/policies/09-disallow-cap-add.yaml
+# BLOCK: Adding dangerous Linux capabilities
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-capabilities
+  annotations:
+    policies.kyverno.io/title: Disallow Dangerous Capabilities
+    policies.kyverno.io/category: Pod Security - Restricted
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Linux capabilities can give containers root-equivalent powers.
+      Blocks NET_ADMIN, SYS_ADMIN, SYS_PTRACE and requires dropping ALL.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: drop-all-capabilities
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces:
+                - app
+      validate:
+        message: "Containers must drop ALL capabilities. Do not add NET_ADMIN, SYS_ADMIN, or SYS_PTRACE."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  capabilities:
+                    drop:
+                      - ALL
+                    =(add):
+                      - "!SYS_ADMIN"
+                      - "!NET_ADMIN"
+                      - "!SYS_PTRACE"
+
+---
+# k8s/policies/10-require-pod-disruption-budget.yaml
+# AUDIT: All Deployments should have a PodDisruptionBudget for HA
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-pod-disruption-budget
+  annotations:
+    policies.kyverno.io/title: Require PodDisruptionBudget
+    policies.kyverno.io/category: Availability
+    policies.kyverno.io/severity: low
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-pdb-exists
+      match:
+        any:
+          - resources:
+              kinds: [Deployment]
+              namespaces:
+                - app
+      validate:
+        message: "Deployments in the app namespace should have a corresponding PodDisruptionBudget."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.metadata.labels.\"app.kubernetes.io/name\" | length(@) }}"
+                operator: Equals
+                value: "0"

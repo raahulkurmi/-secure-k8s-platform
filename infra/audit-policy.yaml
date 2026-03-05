@@ -1,0 +1,86 @@
+# infra/audit-policy.yaml
+# CIS Benchmark compliant audit policy
+# Captures security-relevant API server events at appropriate verbosity
+
+apiVersion: audit.k8s.io/v1
+kind: Policy
+
+# Don't log requests to these non-sensitive endpoints
+omitStages:
+  - RequestReceived
+
+rules:
+  # --- CRITICAL: Log all secret access at metadata level (don't log values!) ---
+  - level: Metadata
+    resources:
+      - group: ""
+        resources: ["secrets", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # --- Log auth failures fully ---
+  - level: RequestResponse
+    namespaces: ["kube-system"]
+    verbs: ["create", "update", "patch", "delete"]
+    resources:
+      - group: ""
+        resources: ["serviceaccounts", "serviceaccounts/token"]
+
+  # --- Log pod exec/attach (critical for runtime security) ---
+  - level: RequestResponse
+    resources:
+      - group: ""
+        resources: ["pods/exec", "pods/attach", "pods/portforward"]
+
+  # --- Log RBAC changes ---
+  - level: RequestResponse
+    resources:
+      - group: "rbac.authorization.k8s.io"
+        resources:
+          - clusterroles
+          - clusterrolebindings
+          - roles
+          - rolebindings
+
+  # --- Log all workload mutations ---
+  - level: Request
+    verbs: ["create", "update", "patch", "delete"]
+    resources:
+      - group: ""
+        resources: ["pods", "replicationcontrollers"]
+      - group: "apps"
+        resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
+      - group: "batch"
+        resources: ["jobs", "cronjobs"]
+
+  # --- Log network policy changes ---
+  - level: Request
+    verbs: ["create", "update", "patch", "delete"]
+    resources:
+      - group: "networking.k8s.io"
+        resources: ["networkpolicies"]
+
+  # --- Log node-level access ---
+  - level: Metadata
+    userGroups: ["system:nodes"]
+
+  # --- Skip noisy, low-value health check logs ---
+  - level: None
+    users: ["system:kube-proxy"]
+    verbs: ["watch"]
+    resources:
+      - group: ""
+        resources: ["endpoints", "services", "services/status"]
+
+  - level: None
+    users:
+      - system:unsecured
+      - system:apiserver
+    verbs: ["get"]
+    resources:
+      - group: ""
+        resources: ["namespaces", "namespaces/status", "namespaces/finalize"]
+
+  # --- Default: log metadata for everything else ---
+  - level: Metadata
+    omitStages:
+      - RequestReceived
