@@ -87,21 +87,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Backend metadata
-        id: meta-backend
-        uses: docker/metadata-action@902fa8ec7d6ecbea8a64d1257b66e6cf29a9a9cf # v5.7.0
-        with:
-          images: ${{ env.IMAGE_PREFIX }}/secure-todo-backend
-          tags: |
-            type=sha,prefix=,suffix=,format=short
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+      - name: Set image tags
+        id: tags
+        run: |
+          SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          echo "sha=${SHA}" >> $GITHUB_OUTPUT
+          echo "backend_tag=${{ env.IMAGE_PREFIX }}/secure-todo-backend:${SHA}" >> $GITHUB_OUTPUT
+          echo "backend_latest=${{ env.IMAGE_PREFIX }}/secure-todo-backend:latest" >> $GITHUB_OUTPUT
+          echo "frontend_tag=${{ env.IMAGE_PREFIX }}/secure-todo-frontend:${SHA}" >> $GITHUB_OUTPUT
+          echo "frontend_latest=${{ env.IMAGE_PREFIX }}/secure-todo-frontend:latest" >> $GITHUB_OUTPUT
 
       - name: Build backend
         uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6.16.0
         with:
           context: app/backend
           push: false
-          tags: ${{ steps.meta-backend.outputs.tags }}
+          tags: |
+            ${{ steps.tags.outputs.backend_tag }}
+            ${{ steps.tags.outputs.backend_latest }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           load: true
@@ -109,7 +112,7 @@ jobs:
       - name: Trivy — Scan backend image
         uses: aquasecurity/trivy-action@6e7b7d1fd3e4fef0c5fa8cce1229c54b2c9bd0d8 # v0.28.0
         with:
-          image-ref: ${{ env.IMAGE_PREFIX }}/secure-todo-backend:latest
+          image-ref: ${{ steps.tags.outputs.backend_latest }}
           severity: HIGH,CRITICAL
           exit-code: 0
           format: table
@@ -120,24 +123,19 @@ jobs:
         with:
           context: app/backend
           push: true
-          tags: ${{ steps.meta-backend.outputs.tags }}
-          cache-from: type=gha
-
-      - name: Frontend metadata
-        id: meta-frontend
-        uses: docker/metadata-action@902fa8ec7d6ecbea8a64d1257b66e6cf29a9a9cf # v5.7.0
-        with:
-          images: ${{ env.IMAGE_PREFIX }}/secure-todo-frontend
           tags: |
-            type=sha,prefix=,suffix=,format=short
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            ${{ steps.tags.outputs.backend_tag }}
+            ${{ steps.tags.outputs.backend_latest }}
+          cache-from: type=gha
 
       - name: Build frontend
         uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6.16.0
         with:
           context: app/frontend
           push: false
-          tags: ${{ steps.meta-frontend.outputs.tags }}
+          tags: |
+            ${{ steps.tags.outputs.frontend_tag }}
+            ${{ steps.tags.outputs.frontend_latest }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           load: true
@@ -145,7 +143,7 @@ jobs:
       - name: Trivy — Scan frontend image
         uses: aquasecurity/trivy-action@6e7b7d1fd3e4fef0c5fa8cce1229c54b2c9bd0d8 # v0.28.0
         with:
-          image-ref: ${{ env.IMAGE_PREFIX }}/secure-todo-frontend:latest
+          image-ref: ${{ steps.tags.outputs.frontend_latest }}
           severity: HIGH,CRITICAL
           exit-code: 0
           format: table
@@ -156,7 +154,9 @@ jobs:
         with:
           context: app/frontend
           push: true
-          tags: ${{ steps.meta-frontend.outputs.tags }}
+          tags: |
+            ${{ steps.tags.outputs.frontend_tag }}
+            ${{ steps.tags.outputs.frontend_latest }}
           cache-from: type=gha
 
   deploy:
