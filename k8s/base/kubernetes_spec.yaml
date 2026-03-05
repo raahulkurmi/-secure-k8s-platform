@@ -168,7 +168,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: backend
-          image: secure-todo-backend:1.0.0
+          image: ghcr.io/raahulkurmi/secure-todo-backend:16a15b9
           imagePullPolicy: Never             # Use local kind image
           ports:
             - containerPort: 3000
@@ -270,7 +270,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: frontend
-          image: secure-todo-frontend:1.0.0
+          image: ghcr.io/raahulkurmi/secure-todo-frontend:16a15b9
           imagePullPolicy: Never
           ports:
             - containerPort: 8080
