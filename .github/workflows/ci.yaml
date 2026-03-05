@@ -18,16 +18,16 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Lint Backend Dockerfile
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
         with:
           dockerfile: app/backend/Dockerfile
           failure-threshold: error
 
       - name: Lint Frontend Dockerfile
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
         with:
           dockerfile: app/frontend/Dockerfile
           failure-threshold: error
@@ -46,10 +46,10 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Trivy — Scan filesystem
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@6e7b7d1fd3e4fef0c5fa8cce1229c54b2c9bd0d8 # v0.28.0
         with:
           scan-type: fs
           scan-ref: .
@@ -58,7 +58,7 @@ jobs:
           format: table
 
       - name: Install Kyverno CLI
-        uses: kyverno/action-install-cli@v0.2.0
+        uses: kyverno/action-install-cli@fcee92fca5c883169ef9927acf543e0b5fc58289 # v0.2.0
         with:
           release: v1.11.0
 
@@ -76,12 +76,12 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
 
       - name: Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -89,7 +89,7 @@ jobs:
 
       - name: Backend metadata
         id: meta-backend
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@902fa8ec7d6ecbea8a64d1257b66e6cf29a9a9cf # v5.7.0
         with:
           images: ${{ env.IMAGE_PREFIX }}/secure-todo-backend
           tags: |
@@ -97,7 +97,7 @@ jobs:
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Build backend
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6.16.0
         with:
           context: app/backend
           push: false
@@ -107,7 +107,7 @@ jobs:
           load: true
 
       - name: Trivy — Scan backend image
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@6e7b7d1fd3e4fef0c5fa8cce1229c54b2c9bd0d8 # v0.28.0
         with:
           image-ref: ${{ env.IMAGE_PREFIX }}/secure-todo-backend:latest
           severity: HIGH,CRITICAL
@@ -116,7 +116,7 @@ jobs:
 
       - name: Push backend
         if: github.ref == 'refs/heads/main'
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6.16.0
         with:
           context: app/backend
           push: true
@@ -125,7 +125,7 @@ jobs:
 
       - name: Frontend metadata
         id: meta-frontend
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@902fa8ec7d6ecbea8a64d1257b66e6cf29a9a9cf # v5.7.0
         with:
           images: ${{ env.IMAGE_PREFIX }}/secure-todo-frontend
           tags: |
@@ -133,7 +133,7 @@ jobs:
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Build frontend
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6.16.0
         with:
           context: app/frontend
           push: false
@@ -143,7 +143,7 @@ jobs:
           load: true
 
       - name: Trivy — Scan frontend image
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@6e7b7d1fd3e4fef0c5fa8cce1229c54b2c9bd0d8 # v0.28.0
         with:
           image-ref: ${{ env.IMAGE_PREFIX }}/secure-todo-frontend:latest
           severity: HIGH,CRITICAL
@@ -152,7 +152,7 @@ jobs:
 
       - name: Push frontend
         if: github.ref == 'refs/heads/main'
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6.16.0
         with:
           context: app/frontend
           push: true
@@ -167,7 +167,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           ref: main
