@@ -66,7 +66,7 @@ jobs:
           output: trivy-fs.sarif
 
       - name: Upload Trivy SARIF to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()            # Upload even if scan fails
         with:
           sarif_file: trivy-fs.sarif
@@ -139,7 +139,7 @@ jobs:
           output: trivy-backend.sarif
 
       - name: Upload backend scan results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: trivy-backend.sarif
@@ -183,7 +183,7 @@ jobs:
           output: trivy-frontend.sarif
 
       - name: Upload frontend scan results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: trivy-frontend.sarif
