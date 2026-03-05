@@ -35,8 +35,10 @@ jobs:
         run: |
           curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.4/kubeconform-linux-amd64.tar.gz \
             | tar xz -C /usr/local/bin
-          kubeconform -strict -summary k8s/base/
-          kubeconform -strict -summary k8s/policies/
+          # Only validate core K8s resources — skip Kyverno CRDs (ClusterPolicy)
+          kubeconform -strict -summary \
+            -skip ClusterPolicy \
+            k8s/base/ k8s/policies/
 
 # ── Job 2: Security Scan ────────────────────────────────────────────────────
   security-scan:
