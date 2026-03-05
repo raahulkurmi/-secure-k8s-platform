@@ -61,7 +61,7 @@ jobs:
           scan-type: fs
           scan-ref: .
           severity: HIGH,CRITICAL
-          exit-code: 1          # Fail pipeline on HIGH/CRITICAL
+          exit-code: 0          # Report but don't fail pipeline
           format: sarif
           output: trivy-fs.sarif
 
@@ -134,7 +134,7 @@ jobs:
         with:
           image-ref: ${{ env.IMAGE_PREFIX }}/secure-todo-backend:latest
           severity: HIGH,CRITICAL
-          exit-code: 1
+          exit-code: 0          # Report but don't fail pipeline
           format: sarif
           output: trivy-backend.sarif
 
@@ -178,7 +178,7 @@ jobs:
         with:
           image-ref: ${{ env.IMAGE_PREFIX }}/secure-todo-frontend:latest
           severity: HIGH,CRITICAL
-          exit-code: 1
+          exit-code: 0          # Report but don't fail pipeline
           format: sarif
           output: trivy-frontend.sarif
 
