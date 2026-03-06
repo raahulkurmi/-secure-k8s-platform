@@ -168,7 +168,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: backend
-          image: ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/secure-todo-backend:d6b6235
+          image: ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/secure-todo-backend:ce87491
           imagePullPolicy: Never             # Use local kind image
           ports:
             - containerPort: 3000
@@ -270,7 +270,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: frontend
-          image: ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/secure-todo-frontend:d6b6235
+          image: ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/ghcr.io/raahulkurmi/secure-todo-frontend:ce87491
           imagePullPolicy: Never
           ports:
             - containerPort: 8080
