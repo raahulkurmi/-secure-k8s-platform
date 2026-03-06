@@ -1,0 +1,169 @@
+# k8s/network-policies/network-policies.yaml
+# Zero-trust networking — deny all by default, explicitly allow what's needed
+
+# ── 1. Default Deny All ───────────────────────────────────────────────────────
+# Blocks ALL ingress and egress for every pod in the app namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: app
+spec:
+  podSelector: {}        # applies to ALL pods in namespace
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# ── 2. Allow Frontend → Backend ───────────────────────────────────────────────
+# Frontend pods can only talk to backend pods on port 3000
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-to-backend
+  namespace: app
+spec:
+  podSelector:
+    matchLabels:
+      app: backend          # this policy applies TO backend pods
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: frontend  # only allow traffic FROM frontend pods
+      ports:
+        - protocol: TCP
+          port: 3000
+
+---
+# ── 3. Allow Backend → Postgres ───────────────────────────────────────────────
+# Backend pods can only talk to postgres on port 5432
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-to-postgres
+  namespace: app
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres         # applies TO postgres pods
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: backend   # only allow FROM backend pods
+      ports:
+        - protocol: TCP
+          port: 5432
+
+---
+# ── 4. Allow Backend Egress → Postgres ────────────────────────────────────────
+# Backend needs to be explicitly allowed to SEND traffic to postgres
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-egress-postgres
+  namespace: app
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Allow DNS resolution (required for service discovery)
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# ── 5. Allow Frontend Egress → Backend ────────────────────────────────────────
+# Frontend needs to be explicitly allowed to SEND traffic to backend
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-egress-backend
+  namespace: app
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: backend
+      ports:
+        - protocol: TCP
+          port: 3000
+    # Allow DNS resolution
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# ── 6. Allow Ingress-nginx → Frontend ─────────────────────────────────────────
+# ingress-nginx controller needs to reach frontend pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-frontend
+  namespace: app
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# ── 7. Allow Ingress-nginx → Backend ──────────────────────────────────────────
+# ingress-nginx controller needs to reach backend pods directly
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-backend
+  namespace: app
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3000

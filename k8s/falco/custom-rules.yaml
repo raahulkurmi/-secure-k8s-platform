@@ -1,0 +1,212 @@
+# k8s/falco/custom-rules.yaml
+# Falco runtime detection rules — complement to Kyverno admission policies
+# Kyverno blocks at deploy time. Falco catches what slips through at runtime.
+
+customRules:
+  custom-rules.yaml: |-
+
+    # -----------------------------------------------------------------------
+    # RULE 01 — Complement to: 01-disallow-privileged.yaml
+    # Kyverno blocks privileged containers at admission.
+    # Falco detects if a privileged process spawns at runtime anyway.
+    # -----------------------------------------------------------------------
+    - rule: Privileged Process Spawned in Container
+      desc: Detects a process running with elevated privileges inside a container
+      condition: >
+        spawned_process and container
+        and proc.vpid = 1
+        and user.uid = 0
+        and not proc.name in (known_root_processes)
+      output: >
+        Privileged process spawned in container
+        (user=%user.name proc=%proc.name container=%container.name
+        image=%container.image.repository)
+      priority: CRITICAL
+      tags: [container, privilege_escalation, policy01]
+
+    # -----------------------------------------------------------------------
+    # RULE 02 — Complement to: 02-require-non-root.yaml
+    # Kyverno requires runAsNonRoot. Falco detects root execution at runtime.
+    # -----------------------------------------------------------------------
+    - rule: Container Running as Root User
+      desc: Detects any process running as root (UID 0) inside a container
+      condition: >
+        spawned_process and container
+        and user.uid = 0
+        and not proc.name in (known_root_processes)
+        and not container.image.repository in (trusted_images)
+      output: >
+        Container process running as root
+        (user=%user.name uid=%user.uid proc=%proc.name
+        container=%container.name image=%container.image.repository)
+      priority: WARNING
+      tags: [container, root, policy02]
+
+    # -----------------------------------------------------------------------
+    # RULE 03 — Complement to: 03-disallow-latest-tag.yaml
+    # Kyverno blocks :latest at admission. Falco flags untagged images at runtime.
+    # -----------------------------------------------------------------------
+    - rule: Container Started With Latest Tag
+      desc: Detects containers running with the :latest image tag
+      condition: >
+        container.image.tag = "latest"
+        and container.id != ""
+        and evt.type = container
+      output: >
+        Container started with latest image tag
+        (container=%container.name image=%container.image.repository
+        tag=%container.image.tag)
+      priority: WARNING
+      tags: [container, image, best_practices, policy03]
+
+    # -----------------------------------------------------------------------
+    # RULE 04 — Complement to: 05-disallow-host-namespaces.yaml
+    # Kyverno blocks hostPID/hostIPC/hostNetwork. Falco detects host namespace access.
+    # -----------------------------------------------------------------------
+    - rule: Container Accessing Host Network Namespace
+      desc: Detects a container process accessing the host network namespace
+      condition: >
+        spawned_process and container
+        and proc.is_vpid = false
+      output: >
+        Process accessing host network namespace from container
+        (proc=%proc.name container=%container.name
+        image=%container.image.repository)
+      priority: CRITICAL
+      tags: [container, network, host_namespace, policy05]
+
+    # -----------------------------------------------------------------------
+    # RULE 05 — Complement to: 06-require-readonly-rootfs.yaml
+    # Kyverno requires readOnlyRootFilesystem. Falco detects writes to rootfs.
+    # -----------------------------------------------------------------------
+    - rule: Write to Root Filesystem Detected
+      desc: Detects any write to the container root filesystem (should be read-only)
+      condition: >
+        open_write and container
+        and not fd.name startswith /tmp
+        and not fd.name startswith /var/run
+        and not fd.name startswith /proc
+        and not fd.name startswith /dev
+      output: >
+        Write to root filesystem detected
+        (user=%user.name file=%fd.name proc=%proc.name
+        container=%container.name image=%container.image.repository)
+      priority: ERROR
+      tags: [container, filesystem, policy06]
+
+    # -----------------------------------------------------------------------
+    # RULE 06 — Complement to: 07-disallow-host-path.yaml
+    # Kyverno blocks hostPath volumes. Falco detects host path access at runtime.
+    # -----------------------------------------------------------------------
+    - rule: Sensitive Host Path Accessed
+      desc: Detects access to sensitive host paths from inside a container
+      condition: >
+        (open_read or open_write) and container
+        and fd.name startswith /etc
+        and not proc.name in (allowed_etc_readers)
+      output: >
+        Sensitive host path accessed from container
+        (user=%user.name file=%fd.name proc=%proc.name
+        container=%container.name image=%container.image.repository)
+      priority: ERROR
+      tags: [container, host_path, data_exfiltration, policy07]
+
+    # -----------------------------------------------------------------------
+    # RULE 07 — Complement to: 09-disallow-cap-add.yaml
+    # Kyverno drops ALL capabilities. Falco detects dangerous capability usage.
+    # -----------------------------------------------------------------------
+    - rule: Dangerous Capability Used in Container
+      desc: Detects use of SYS_ADMIN, NET_ADMIN, or SYS_PTRACE inside a container
+      condition: >
+        spawned_process and container
+        and (proc.cap_effective contains CAP_SYS_ADMIN
+          or proc.cap_effective contains CAP_NET_ADMIN
+          or proc.cap_effective contains CAP_SYS_PTRACE)
+      output: >
+        Dangerous Linux capability used in container
+        (user=%user.name proc=%proc.name caps=%proc.cap_effective
+        container=%container.name image=%container.image.repository)
+      priority: CRITICAL
+      tags: [container, capabilities, privilege_escalation, policy09]
+
+    # -----------------------------------------------------------------------
+    # RULE 08 — BONUS: Shell Spawned in Container
+    # Classic attack vector — attacker execs into pod and opens a shell.
+    # No direct Kyverno equivalent — this is pure runtime detection.
+    # -----------------------------------------------------------------------
+    - rule: Shell Spawned in Container
+      desc: Detects when a shell (bash/sh/zsh) is spawned inside any container
+      condition: >
+        spawned_process and container
+        and proc.name in (shell_binaries)
+        and not proc.pname in (allowed_shell_parents)
+      output: >
+        Shell spawned inside container — possible intrusion
+        (user=%user.name shell=%proc.name parent=%proc.pname
+        container=%container.name image=%container.image.repository
+        cmdline=%proc.cmdline)
+      priority: WARNING
+      tags: [container, shell, intrusion_detection]
+
+    # -----------------------------------------------------------------------
+    # RULE 09 — BONUS: kubectl exec detected
+    # Detects when someone execs into a running pod — common in attacks.
+    # -----------------------------------------------------------------------
+    - rule: Kubectl Exec Into Pod Detected
+      desc: Detects kubectl exec or similar interactive session into a container
+      condition: >
+        spawned_process and container
+        and proc.name = "bash"
+        and proc.pname = "runc"
+      output: >
+        kubectl exec or interactive shell session detected
+        (user=%user.name container=%container.name
+        image=%container.image.repository cmdline=%proc.cmdline)
+      priority: WARNING
+      tags: [container, kubectl, intrusion_detection]
+
+    # -----------------------------------------------------------------------
+    # RULE 10 — BONUS: Outbound connection to unexpected destination
+    # Detects possible C2 (command & control) or data exfiltration.
+    # -----------------------------------------------------------------------
+    - rule: Unexpected Outbound Network Connection
+      desc: Detects outbound connections from containers to unexpected destinations
+      condition: >
+        outbound and container
+        and not fd.sip in (allowed_outbound_ips)
+        and not fd.sport in (allowed_outbound_ports)
+      output: >
+        Unexpected outbound connection from container
+        (user=%user.name container=%container.name
+        image=%container.image.repository
+        dest=%fd.rip:%fd.rport proto=%fd.proto)
+      priority: WARNING
+      tags: [container, network, exfiltration]
+
+    # -----------------------------------------------------------------------
+    # MACROS — reusable conditions referenced in rules above
+    # -----------------------------------------------------------------------
+    - macro: shell_binaries
+      condition: proc.name in (bash, sh, zsh, fish, dash)
+
+    - macro: known_root_processes
+      condition: proc.name in (pause, tini, dumb-init)
+
+    - macro: allowed_shell_parents
+      condition: proc.pname in (tini, dumb-init, bash)
+
+    - macro: trusted_images
+      condition: >
+        container.image.repository in (
+          gcr.io/google_containers/pause,
+          k8s.gcr.io/pause
+        )
+
+    - macro: allowed_etc_readers
+      condition: proc.name in (cat, ls, id, whoami)
+
+    - list: allowed_outbound_ips
+      items: []
+
+    - list: allowed_outbound_ports
+      items: [443, 80, 53]

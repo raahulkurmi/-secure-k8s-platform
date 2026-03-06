@@ -1,0 +1,30 @@
+# k8s/falco/falco-policy-exception.yaml
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: falco-policy-exception
+  namespace: falco
+spec:
+  exceptions:
+    - policyName: disallow-privileged-containers
+      ruleNames:
+        - no-privileged-containers
+        - autogen-no-privileged-containers
+    - policyName: require-run-as-non-root
+      ruleNames:
+        - check-runAsNonRoot
+        - autogen-check-runAsNonRoot
+    - policyName: disallow-host-path
+      ruleNames:
+        - no-hostpath
+        - autogen-no-hostpath
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+            - DaemonSet
+            - Deployment
+            - StatefulSet
+          namespaces:
+            - falco
