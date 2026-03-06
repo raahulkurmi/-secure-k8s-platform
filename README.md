@@ -105,9 +105,9 @@ Most Kubernetes projects stop at "deploy an app." This project builds security i
 |---|---|---|
 | **Admission Control** | Kyverno | Validates every pod spec at creation time — blocks non-compliant workloads before they run |
 | **Runtime Security** | Falco | Monitors kernel-level syscalls using eBPF — detects privilege escalation, reverse shells, file tampering |
-| **Network Security** | Calico | Enforces zero-trust NetworkPolicies — default deny all, explicit allow-list per service |
+| **Network Security** | Kubernetes NetworkPolicy | Zero-trust — default deny all, explicit allow-lists per hop using namespaceSelector + podSelector AND conditions |
 | **Image Security** | Trivy | Scans Dockerfiles and container images for HIGH/CRITICAL CVEs in the CI pipeline |
-| **Ingress** | ingress-nginx | Single entry point into the cluster via hostPort binding — routes by hostname/path |
+| **Network Policies** | Kubernetes NetworkPolicy (apiVersion: networking.k8s.io/v1) | Single entry point into the cluster via hostPort binding — routes by hostname/path |
 | **GitOps** | ArgoCD | Git is the single source of truth — drift detection and automatic reconciliation |
 | **Dockerfile Linting** | hadolint | Enforces Dockerfile best practices (no root, no latest, proper layer ordering) |
 | **Manifest Validation** | kubeconform | Validates Kubernetes manifests against the official API schema in CI |
@@ -119,12 +119,12 @@ Most Kubernetes projects stop at "deploy an app." This project builds security i
 | Category | Technology |
 |---|---|
 | **Container Orchestration** | Kubernetes (kind — 1 control-plane + 3 workers) |
-| **CNI / Networking** | Calico |
+| **CNI** | Calico (enables NetworkPolicy enforcement on kind) |
 | **Policy Engine** | Kyverno v1.11 |
 | **Runtime Security** | Falco (eBPF / modern_ebpf driver) |
 | **GitOps / CD** | ArgoCD (installed via Helm) |
 | **Ingress** | ingress-nginx |
-| **CI/CD** | GitHub Actions |
+| **Ingress** | ingress-nginx |
 | **Container Registry** | GitHub Container Registry (GHCR) |
 | **Image Scanning** | Trivy (filesystem + image scan) |
 | **Dockerfile Linting** | hadolint |
